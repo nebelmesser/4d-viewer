@@ -19,7 +19,6 @@ export type StoredPrefs = {
 };
 
 const VIEW_MODES = new Set<ViewMode>(['mono', 'cross', 'parallel']);
-const OBJECT_IDS = new Set<ObjectId>(['tesseract', 'matryoshka']);
 const TILT_MODES = new Set<TiltMode>(['off', 'xyz', 'xw-yw', 'zw']);
 const ANGLE_KEYS: Array<keyof Angles> = ['xy', 'xz', 'yz', 'xw', 'yw', 'zw'];
 
@@ -62,8 +61,8 @@ function sanitize(data: Record<string, unknown>): Partial<StoredPrefs> {
   if (typeof data.viewMode === 'string' && VIEW_MODES.has(data.viewMode as ViewMode)) {
     out.viewMode = data.viewMode as ViewMode;
   }
-  if (typeof data.objectId === 'string' && OBJECT_IDS.has(data.objectId as ObjectId)) {
-    out.objectId = data.objectId as ObjectId;
+  if (typeof data.objectId === 'string' && data.objectId.length > 0 && data.objectId.length < 64) {
+    out.objectId = data.objectId;
   }
   const objectSize = num(data.objectSize);
   if (objectSize !== null) out.objectSize = clamp(objectSize, 0.4, 2.2);

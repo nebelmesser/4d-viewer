@@ -8,9 +8,21 @@ import {
 } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { MATRYOSHKA_MESH_SCALE } from '../math/constants';
-import type { Mesh3D } from '../math/types';
-import { finishMesh, normalizePositions, dropInwardTriangles } from './mesh3d';
+import { dropInwardTriangles, normalizePositions } from './mesh3d';
+
+export type GlbSpec = {
+  url: string;
+  normalize?: boolean;
+  scale?: number;
+  dropInward?: boolean;
+};
+
+export type GlbGeometry = {
+  positions: Float32Array;
+  indices: Uint32Array;
+  uvs: Float32Array | null;
+  texture: Texture | null;
+};
 
 function textureFromMaterial(material: unknown): Texture | null {
   if (!material || Array.isArray(material)) return null;
@@ -33,10 +45,9 @@ function attrArray(attr: BufferAttribute | InterleavedBufferAttribute, itemSize:
   return out;
 }
 
-export async function loadMatryoshkaMesh(): Promise<Mesh3D> {
-  const url = `${import.meta.env.BASE_URL}models/matryoshka.glb`;
+export async function loadGlbGeometry(spec: GlbSpec, resolveUrl: (url: string) => string): Promise<GlbGeometry> {
   const loader = new GLTFLoader();
-  const gltf = await loader.loadAsync(url);
+  const gltf = await loader.loadAsync(resolveUrl(spec.url));
   const geometries: BufferGeometry[] = [];
   let texture: Texture | null = null;
 
@@ -56,38 +67,31 @@ export async function loadMatryoshkaMesh(): Promise<Mesh3D> {
   });
 
   if (geometries.length === 0) {
-    throw new Error('Matryoshka GLB has no meshes');
+    throw new Error('GLB has no meshes');
   }
 
   const merged = geometries.length === 1
     ? geometries[0]
     : mergeGeometries(geometries, true);
-  if (!merged) throw new Error('Could not merge matryoshka geometries');
+  if (!merged) throw new Error('Could not merge GLB geometries');
 
   const positionAttr = merged.getAttribute('position');
-  if (!positionAttr) throw new Error('Matryoshka mesh has no positions');
+  if (!positionAttr) throw new Error('GLB mesh has no positions');
 
   const positions = attrArray(positionAttr, 3);
-  normalizePositions(positions);
-  for (let i = 0; i < positions.length; i++) {
-    positions[i] *= MATRYOSHKA_MESH_SCALE;
+  if (spec.normalize !== false) normalizePositions(positions);
+  const scale = spec.scale ?? 1;
+  if (scale !== 1) {
+    for (let i = 0; i < positions.length; i++) positions[i] *= scale;
   }
 
   const rawIndex = merged.index
     ? Uint32Array.from(merged.index.array as ArrayLike<number>)
     : Uint32Array.from({ length: positions.length / 3 }, (_, i) => i);
-  const index = dropInwardTriangles(positions, rawIndex);
+  const indices = spec.dropInward ? dropInwardTriangles(positions, rawIndex) : rawIndex;
 
   const uvAttr = merged.getAttribute('uv');
   const uvs = uvAttr ? attrArray(uvAttr, 2) : null;
 
-  return finishMesh({
-    id: 'matryoshka',
-    kind: 'surface',
-    label: 'Matryoshka',
-    positions,
-    indices: index,
-    uvs,
-    texture,
-  });
+  return { positions, indices, uvs, texture };
 }

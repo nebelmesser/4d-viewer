@@ -1,6 +1,6 @@
 import { MAX_SLICES } from '../math/constants';
 import type { DisplayState, Mesh3D, ObjectId, TiltMode, ViewMode } from '../math/types';
-import { CATALOG } from '../objects/catalog';
+import { catalogEntries, hasFigure } from '../objects/catalog';
 import {
   deviceOrbit,
   deviceTiltOn,
@@ -74,12 +74,30 @@ export function bindMenu(
   const sliceLabel = sliceCountValue;
   const sizeLabel = sizeValue;
 
+  function fillObjectBar(): void {
+    if (!objectBar) return;
+    objectBar.replaceChildren();
+    for (const entry of catalogEntries()) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.object = entry.id;
+      button.setAttribute('aria-label', entry.label);
+      if (entry.iconSvg) {
+        button.innerHTML = entry.iconSvg;
+      } else {
+        button.textContent = entry.label.slice(0, 1).toUpperCase();
+      }
+      objectBar.append(button);
+    }
+  }
+
   function syncObjectButtons(id: ObjectId): void {
     objectBar?.querySelectorAll<HTMLButtonElement>('button[data-object]').forEach((button) => {
       button.classList.toggle('is-active', button.dataset.object === id);
     });
   }
 
+  fillObjectBar();
   syncObjectButtons(controls.objectId);
 
   function setMenuOpen(open: boolean): void {
@@ -139,7 +157,14 @@ export function bindMenu(
   function syncObjectUi(mesh: Mesh3D | null): void {
     if (!mesh) return;
     syncObjectButtons(mesh.id);
-    if (objectCredit) objectCredit.hidden = mesh.id !== 'matryoshka';
+    if (objectCredit) {
+      if (mesh.creditHtml) {
+        objectCredit.innerHTML = mesh.creditHtml;
+        objectCredit.hidden = false;
+      } else {
+        objectCredit.hidden = true;
+      }
+    }
     sizeSlider.value = String(controls.objectSize);
     sizeLabel.textContent = formatNum(controls.objectSize);
     syncSliceUi();
@@ -172,7 +197,7 @@ export function bindMenu(
     const button = (event.target as HTMLElement).closest('button[data-object]');
     if (!button) return;
     const id = (button as HTMLElement).dataset.object as ObjectId;
-    if (!CATALOG.some((entry) => entry.id === id)) return;
+    if (!hasFigure(id)) return;
     onObjectChange(id);
   });
 

@@ -1,5 +1,5 @@
-import { defaultAngles } from '../math/constants';
 import type { Angles, ObjectId } from '../math/types';
+import { figureAngles } from '../objects/catalog';
 import { animateAnglesTo, nudgeAngle, startHoldSpin, stopHoldSpin } from './angleMotion';
 import { deviceOrbit } from './deviceOrbit';
 import { markPrefsDirty } from './prefs';
@@ -100,7 +100,7 @@ export function bindAngleHud(angles: Angles, objectId: () => ObjectId): { sync: 
 
   document.getElementById('angle-reset')?.addEventListener('click', (event) => {
     event.stopPropagation();
-    animateAnglesTo(angles, defaultAngles(objectId()));
+    animateAnglesTo(angles, figureAngles(objectId()));
     sync();
     markPrefsDirty();
   });

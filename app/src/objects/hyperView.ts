@@ -16,7 +16,7 @@ import {
   type Texture,
 } from 'three';
 import { colorForObjectW, colorToHex, lerpColor } from '../math/color';
-import { CUBE_EDGES, MATRYOSHKA_MESH_SCALE, MAX_SLICES } from '../math/constants';
+import { MAX_SLICES } from '../math/constants';
 import { rotate3Into, transform4, transform4Into } from '../math/transform';
 import type { DisplayState, Mesh3D, TransformContext, Vec3 } from '../math/types';
 import { attachDepthFade, setDepthFade, type DepthFade } from '../viewer/depthFade';
@@ -81,8 +81,20 @@ function writeCap(
   }
 }
 
+function disposeObject(parent: Object3D, obj: { geometry: BufferGeometry; material: { dispose(): void } | Array<{ dispose(): void }> } | null): void {
+  if (!obj) return;
+  parent.remove(obj as unknown as Object3D);
+  obj.geometry.dispose();
+  const mat = obj.material;
+  if (Array.isArray(mat)) {
+    for (const m of mat) m.dispose();
+  } else {
+    mat.dispose();
+  }
+}
+
 export class HyperView {
-  private mesh: Mesh3D | null = null;
+  private figure: Mesh3D | null = null;
   private capNeg: Mesh | null = null;
   private capPos: Mesh | null = null;
   private sliceMeshes: Mesh[] = [];
@@ -99,12 +111,12 @@ export class HyperView {
   }
 
   current(): Mesh3D | null {
-    return this.mesh;
+    return this.figure;
   }
 
-  setMesh(mesh: Mesh3D, display: DisplayState): void {
+  setMesh(mesh: Mesh3D, _display: DisplayState): void {
     this.clear();
-    this.mesh = mesh;
+    this.figure = mesh;
     const n = mesh.vertexCount;
     const makeGeo = (): BufferGeometry => {
       const geo = new BufferGeometry();
@@ -174,8 +186,8 @@ export class HyperView {
       this.spokes.renderOrder = 3;
       this.parent.add(this.spokes);
 
-      const slicePositions = new Float32Array(MAX_SLICES * CUBE_EDGES.length * 6);
-      const sliceColors = new Float32Array(MAX_SLICES * CUBE_EDGES.length * 6);
+      const slicePositions = new Float32Array(MAX_SLICES * mesh.edges.length * 6);
+      const sliceColors = new Float32Array(MAX_SLICES * mesh.edges.length * 6);
       const sliceGeo = new BufferGeometry();
       sliceGeo.setAttribute('position', new BufferAttribute(slicePositions, 3));
       sliceGeo.setAttribute('color', new BufferAttribute(sliceColors, 3));
@@ -186,8 +198,9 @@ export class HyperView {
       this.sliceLines.visible = false;
       this.parent.add(this.sliceLines);
 
-      const pointPositions = new Float32Array(16 * 3);
-      const pointColors = new Float32Array(16 * 3);
+      const pointCount = mesh.vertexCount * 2;
+      const pointPositions = new Float32Array(pointCount * 3);
+      const pointColors = new Float32Array(pointCount * 3);
       const pointGeo = new BufferGeometry();
       pointGeo.setAttribute('position', new BufferAttribute(pointPositions, 3));
       pointGeo.setAttribute('color', new BufferAttribute(pointColors, 3));
@@ -207,13 +220,13 @@ export class HyperView {
   }
 
   projectedRadius(ctx: TransformContext): number {
-    const mesh = this.mesh;
-    if (!mesh) return 0.35;
+    const figure = this.figure;
+    if (!figure) return 0.35;
     let maxR = 0.35;
     for (const w of [-1, 1]) {
-      for (let i = 0; i < mesh.vertexCount; i++) {
+      for (let i = 0; i < figure.vertexCount; i++) {
         const o = i * 3;
-        transform4Into(mesh.positions[o], mesh.positions[o + 1], mesh.positions[o + 2], w, ctx, scratch);
+        transform4Into(figure.positions[o], figure.positions[o + 1], figure.positions[o + 2], w, ctx, scratch);
         maxR = Math.max(maxR, Math.hypot(scratch[0], scratch[1], scratch[2]));
       }
     }
@@ -221,27 +234,27 @@ export class HyperView {
   }
 
   extentRadius(ctx: TransformContext): number {
-    const mesh = this.mesh;
-    if (!mesh) return 0.35;
+    const figure = this.figure;
+    if (!figure) return 0.35;
     let maxR = 0.35;
     for (const w of [-1, 1]) {
-      for (let i = 0; i < mesh.vertexCount; i++) {
+      for (let i = 0; i < figure.vertexCount; i++) {
         const o = i * 3;
-        rotate3Into(mesh.positions[o], mesh.positions[o + 1], mesh.positions[o + 2], w, ctx, scratch);
+        rotate3Into(figure.positions[o], figure.positions[o + 1], figure.positions[o + 2], w, ctx, scratch);
         maxR = Math.max(maxR, Math.hypot(scratch[0], scratch[1], scratch[2]));
       }
     }
-    return mesh.id === 'matryoshka' ? maxR / MATRYOSHKA_MESH_SCALE : maxR;
+    return maxR / (figure.extentScale || 1);
   }
 
   projectedHalfWidth(ctx: TransformContext): number {
-    const mesh = this.mesh;
-    if (!mesh) return 0.2;
+    const figure = this.figure;
+    if (!figure) return 0.2;
     let maxX = 0.2;
     for (const w of [-1, 1]) {
-      for (let i = 0; i < mesh.vertexCount; i++) {
+      for (let i = 0; i < figure.vertexCount; i++) {
         const o = i * 3;
-        transform4Into(mesh.positions[o], mesh.positions[o + 1], mesh.positions[o + 2], w, ctx, scratch);
+        transform4Into(figure.positions[o], figure.positions[o + 1], figure.positions[o + 2], w, ctx, scratch);
         maxX = Math.max(maxX, Math.abs(scratch[0]));
       }
     }
@@ -249,8 +262,10 @@ export class HyperView {
   }
 
   update(ctx: TransformContext, display: DisplayState): void {
-    const mesh = this.mesh;
-    if (!mesh || !this.capNeg || !this.capPos) return;
+    const figure = this.figure;
+    if (!figure) return;
+    const mesh = figure;
+    if (!this.capNeg || !this.capPos) return;
 
     for (const mat of this.materials) {
       mat.opacity = FILL_BASE;
@@ -387,21 +402,23 @@ export class HyperView {
 
     const positions = this.sliceLines.geometry.attributes.position.array as Float32Array;
     const colors = this.sliceLines.geometry.attributes.color.array as Float32Array;
+    const corners: Vec3[] = [];
+    for (let i = 0; i < mesh.vertexCount; i++) corners.push([0, 0, 0]);
     let drawn = 0;
     for (let s = 1; s <= display.sliceCount; s++) {
       const w = -1 + 2 * (s / (display.sliceCount + 1));
       const color = lerpColor((w + 1) / 2);
-      const corners: Vec3[] = [];
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < mesh.vertexCount; i++) {
         const o = i * 3;
-        corners.push(
-          transform4(
-            [mesh.positions[o], mesh.positions[o + 1], mesh.positions[o + 2], w],
-            ctx,
-          ),
+        const p = transform4(
+          [mesh.positions[o], mesh.positions[o + 1], mesh.positions[o + 2], w],
+          ctx,
         );
+        corners[i][0] = p[0];
+        corners[i][1] = p[1];
+        corners[i][2] = p[2];
       }
-      for (const [a, b] of CUBE_EDGES) {
+      for (const [a, b] of mesh.edges) {
         const pa = corners[a];
         const pb = corners[b];
         const o = drawn * 6;
@@ -430,7 +447,7 @@ export class HyperView {
     let k = 0;
     for (const w of [-1, 1] as const) {
       const c = colorForObjectW(w);
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < mesh.vertexCount; i++) {
         const o = i * 3;
         transform4Into(mesh.positions[o], mesh.positions[o + 1], mesh.positions[o + 2], w, ctx, scratch);
         const p = k * 3;
@@ -459,15 +476,7 @@ export class HyperView {
       ...this.sliceMeshes,
     ];
     for (const obj of objects) {
-      if (!obj) continue;
-      this.parent.remove(obj);
-      obj.geometry.dispose();
-      const mat = obj.material;
-      if (Array.isArray(mat)) {
-        for (const m of mat) m.dispose();
-      } else {
-        mat.dispose();
-      }
+      disposeObject(this.parent, obj);
     }
     this.capNeg = null;
     this.capPos = null;
@@ -478,6 +487,6 @@ export class HyperView {
     this.sliceMeshes = [];
     this.materials.length = 0;
     this.fades.length = 0;
-    this.mesh = null;
+    this.figure = null;
   }
 }

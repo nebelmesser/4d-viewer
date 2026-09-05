@@ -152,13 +152,17 @@ export function dropInwardTriangles(positions: Float32Array, indices: Uint32Arra
   return Uint32Array.from(kept);
 }
 
-export function finishMesh(mesh: Omit<Mesh3D, 'edges' | 'displayEdges' | 'wSpokes' | 'vertexCount'>): Mesh3D {
-  const edges = uniqueEdges(mesh.indices);
+export function finishMesh(
+  mesh: Omit<Mesh3D, 'edges' | 'displayEdges' | 'wSpokes' | 'vertexCount'> & Partial<Pick<Mesh3D, 'edges' | 'displayEdges' | 'wSpokes'>>,
+): Mesh3D {
+  const edges = mesh.edges ?? uniqueEdges(mesh.indices);
   return {
     ...mesh,
     vertexCount: mesh.positions.length / 3,
     edges,
-    displayEdges: subsampleEdges(edges),
-    wSpokes: pickSpokes(mesh.positions),
+    displayEdges: mesh.displayEdges ?? subsampleEdges(edges),
+    wSpokes: mesh.wSpokes ?? pickSpokes(mesh.positions),
+    extentScale: mesh.extentScale ?? 1,
+    creditHtml: mesh.creditHtml ?? null,
   };
 }

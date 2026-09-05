@@ -12,7 +12,7 @@ export type Angles = {
 
 export type ViewMode = 'mono' | 'cross' | 'parallel';
 export type TiltMode = 'off' | 'xyz' | 'xw-yw' | 'zw';
-export type ObjectId = 'tesseract' | 'matryoshka';
+export type ObjectId = string;
 export type ObjectKind = 'polytope' | 'surface';
 
 export type DeviceOrbitState = {
@@ -58,4 +58,6 @@ export type Mesh3D = {
   displayEdges: Array<[number, number]>;
   wSpokes: number[];
   texture: import('three').Texture | null;
+  extentScale: number;
+  creditHtml: string | null;
 };

@@ -7,9 +7,18 @@ import {
   StereoCamera,
   WebGLRenderer,
 } from 'three';
-import { DEFAULT_OPACITY, DEFAULT_STEREO_DISTANCE, VIEW_OFFSET_Y, defaultAngles, defaultObjectSize, defaultSliceCount } from './math/constants';
+import { DEFAULT_OPACITY, DEFAULT_STEREO_DISTANCE, VIEW_OFFSET_Y } from './math/constants';
 import type { ObjectId, TransformContext } from './math/types';
-import { CATALOG, loadObject } from './objects/catalog';
+import {
+  defaultFigureId,
+  figureAngles,
+  figureObjectSize,
+  figureSliceCount,
+  hasFigure,
+  loadCatalog,
+  loadObject,
+  nextFigure,
+} from './objects/catalog';
 import { HyperView } from './objects/hyperView';
 import { bindAngleHud } from './viewer/angleHud';
 import { SceneAxes } from './viewer/sceneAxes';
@@ -30,20 +39,22 @@ import { bindPrefs, consumeResetQuery, loadPrefs, markPrefsDirty, type StoredPre
 
 function objectFromQuery(): ObjectId | null {
   const raw = new URLSearchParams(window.location.search).get('object')?.trim().toLowerCase();
-  return CATALOG.some((entry) => entry.id === raw) ? raw as ObjectId : null;
+  return raw && hasFigure(raw) ? raw : null;
 }
 
 consumeResetQuery();
+await loadCatalog();
 const stored = loadPrefs();
 const queryObject = objectFromQuery();
-const initialObject = queryObject ?? stored?.objectId ?? 'matryoshka';
+const storedObject = stored?.objectId && hasFigure(stored.objectId) ? stored.objectId : null;
+const initialObject = queryObject ?? storedObject ?? defaultFigureId();
 const reusePose = Boolean(stored && (!queryObject || queryObject === stored.objectId));
 
-const angles = { ...(reusePose && stored?.angles ? stored.angles : defaultAngles(initialObject)) };
+const angles = { ...(reusePose && stored?.angles ? stored.angles : figureAngles(initialObject)) };
 
 const controls: ViewerControls = {
   viewMode: stored?.viewMode ?? 'mono',
-  objectSize: reusePose && stored?.objectSize !== undefined ? stored.objectSize : defaultObjectSize(initialObject),
+  objectSize: reusePose && stored?.objectSize !== undefined ? stored.objectSize : figureObjectSize(initialObject),
   eyeSep: stored?.eyeSep ?? 1,
   stereoGap: stored?.stereoGap ?? DEFAULT_STEREO_DISTANCE,
   projectionDistance: stored?.projectionDistance ?? 3,
@@ -51,7 +62,7 @@ const controls: ViewerControls = {
   display: {
     fillCaps: true,
     showCage: false,
-    sliceCount: reusePose && stored?.sliceCount !== undefined ? stored.sliceCount : defaultSliceCount(initialObject),
+    sliceCount: reusePose && stored?.sliceCount !== undefined ? stored.sliceCount : figureSliceCount(initialObject),
     meshOpacity: stored?.meshOpacity ?? DEFAULT_OPACITY,
   },
 };
@@ -225,17 +236,17 @@ function animate(): void {
 
 let loading = false;
 
-async function setObject(id: ViewerControls['objectId']): Promise<void> {
+async function setObject(id: ViewerControls['objectId'], skip = new Set<string>()): Promise<void> {
   if (loading) return;
   const switched = id !== controls.objectId;
   loading = true;
   controls.objectId = id;
   if (switched) {
     resetAngleMotion();
-    Object.assign(angles, defaultAngles(id));
+    Object.assign(angles, figureAngles(id));
     resetDeviceOrbit();
-    controls.display.sliceCount = defaultSliceCount(id);
-    controls.objectSize = defaultObjectSize(id);
+    controls.display.sliceCount = figureSliceCount(id);
+    controls.objectSize = figureObjectSize(id);
   }
   try {
     const mesh = await loadObject(id);
@@ -244,9 +255,10 @@ async function setObject(id: ViewerControls['objectId']): Promise<void> {
     markPrefsDirty();
   } catch (err) {
     console.error(err);
-    if (id !== 'tesseract') {
+    const fallback = nextFigure(id, skip);
+    if (fallback) {
       loading = false;
-      await setObject('tesseract');
+      await setObject(fallback, skip);
       return;
     }
   }

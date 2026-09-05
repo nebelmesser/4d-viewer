@@ -1,0 +1,22 @@
+{
+  "id": "matryoshka",
+  "label": "Matryoshka",
+  "kind": "surface",
+  "icon": "icons/matryoshka.svg",
+  "glb": {
+    "url": "../models/matryoshka.glb",
+    "normalize": true,
+    "scale": 1.2,
+    "dropInward": true
+  },
+  "view": {
+    "angles": { "xz": -90, "yz": -25, "yw": 6, "zw": -90 },
+    "sliceCount": 1,
+    "size": 0.8,
+    "sizeCompact": 1.5,
+    "extentScale": 1.2
+  },
+  "credit": {
+    "html": "<a href=\"https://skfb.ly/6UPyw\" target=\"_blank\" rel=\"noopener\">Matryoshka doll</a> by FFeller, <a href=\"http://creativecommons.org/licenses/by/4.0/\" target=\"_blank\" rel=\"noopener\">CC-BY-4.0</a>."
+  }
+}
